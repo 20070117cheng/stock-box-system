@@ -12,6 +12,7 @@ DEFAULTS = {
     "default_lookback_months": 6,   # 每日自動回測的買入日回推月數
     "kd_period": 9,                 # KD 期數
     "near_cross_gap": 2.0,          # 「準備交叉」的 D-K 最大差距
+    "winrate_window_months": 3,     # 勝率歷史的固定觀察窗（月）
 }
 
 

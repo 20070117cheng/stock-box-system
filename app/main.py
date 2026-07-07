@@ -25,6 +25,7 @@ from core.backtest import run_backtest  # noqa: E402
 from core.config import DEFAULTS, load_config  # noqa: E402
 from core.data import get_companies, get_stock_name, load_prices  # noqa: E402
 from core.indicators import calc_kd  # noqa: E402
+from core.history import compute_winrates  # noqa: E402
 from core.report import build_excel  # noqa: E402
 from core.scanner import scan  # noqa: E402
 
@@ -344,9 +345,107 @@ with tab_stock:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ---------- Tab 3：時光機 ----------
+HISTORY_DIR = os.path.join(OUTPUTS_DIR, "history")
+
 with tab_time:
     st.caption("站在過去任一天，用「當時」的資料選股，再看之後照策略操作的結果。"
                "選股當下不知道未來，這裡的績效才能公平檢驗策略。")
+
+    # ---- 過去一年每日勝率 ----
+    st.subheader("過去一年每日勝率")
+    wr_path = os.path.join(HISTORY_DIR, "winrates.parquet")
+    scans_path = os.path.join(HISTORY_DIR, "scans.parquet")
+    if not os.path.exists(wr_path):
+        st.info("勝率歷史尚未生成。雲端排程每天會自動計算，"
+                "首次回填整年資料要跑比較久，之後每天增量更新。")
+    else:
+        wr_default = pd.read_parquet(wr_path)
+        custom = st.session_state.get("wr_custom")
+        if custom is not None:
+            src = st.radio("資料來源",
+                           ["每日排程（預設參數）", f"自訂重算（{custom['desc']}）"],
+                           index=1, horizontal=True)
+            wr = custom["df"] if src.startswith("自訂") else wr_default
+        else:
+            wr = wr_default
+
+        settled = wr[(~wr["發展中"]) & wr["勝率_窗"].notna()]
+        h1, h2, h3, h4 = st.columns(4)
+        h1.metric("年平均勝率（3個月窗）",
+                  f"{settled['勝率_窗'].mean():.1f}%" if len(settled) else "—")
+        h2.metric("已結算天數", f"{len(settled)}")
+        h3.metric("平均報酬（3個月窗）",
+                  f"{settled['平均報酬_窗'].mean():.2f}%" if len(settled) else "—")
+        now_days = wr[wr["勝率_今"].notna()]
+        h4.metric("算到今天的平均勝率",
+                  f"{now_days['勝率_今'].mean():.1f}%" if len(now_days) else "—")
+        st.caption("每天的勝率＝該日入選且有進場的股票中，結算時獲利的比例。"
+                   "「3個月窗」在選股日後 3 個月結算，日與日可比；"
+                   "最近 3 個月的日子還沒走完窗，只出現在「算到今天」版。")
+
+        show_now = st.checkbox("圖上顯示「算到今天」版（目前戰況）", value=False)
+
+        x = pd.to_datetime(wr["選股日"])
+        figw = go.Figure()
+        figw.add_trace(go.Scatter(
+            x=x, y=wr["勝率_窗"], name="勝率（3個月窗）", mode="lines+markers",
+            line=dict(color="#2563eb", width=2), connectgaps=False,
+            customdata=wr[["入選檔數", "進場檔數_窗"]],
+            hovertemplate="%{x|%Y-%m-%d}<br>勝率 %{y:.1f}%<br>"
+                          "入選 %{customdata[0]} 檔、進場 %{customdata[1]} 檔"
+                          "<extra></extra>"))
+        if show_now:
+            figw.add_trace(go.Scatter(
+                x=x, y=wr["勝率_今"], name="勝率（算到今天）", mode="lines",
+                line=dict(color="#9ca3af", width=1.5, dash="dash"),
+                connectgaps=False,
+                customdata=wr[["入選檔數", "進場檔數_今"]],
+                hovertemplate="%{x|%Y-%m-%d}<br>勝率 %{y:.1f}%<br>"
+                              "入選 %{customdata[0]} 檔、進場 %{customdata[1]} 檔"
+                              "<extra></extra>"))
+        figw.add_hline(y=50, line=dict(color="#9ca3af", dash="dot"))
+        figw.update_layout(height=340, hovermode="x unified",
+                           legend=dict(orientation="h", y=1.12),
+                           margin=dict(l=10, r=10, t=30, b=10))
+        figw.update_yaxes(title_text="勝率 %", range=[0, 105])
+        st.plotly_chart(figw, use_container_width=True)
+
+        if os.path.exists(scans_path):
+            with st.expander("用其他停利停損重算歷史勝率"):
+                st.caption("沿用每日排程算好的歷史名單（門檻不變），"
+                           "只用新的停利停損重跑回測。全年逐日重算，需要等幾分鐘。")
+                r1, r2 = st.columns(2)
+                wr_sp = r1.number_input("移動停利 %", 3.0, 30.0,
+                                        float(cfg_saved["stop_profit_pct"]),
+                                        0.5, key="wr_sp")
+                wr_fl = r2.number_input("固定停損 %", 1.0, 15.0,
+                                        float(cfg_saved["fixed_loss_pct"]),
+                                        0.5, key="wr_fl")
+                if st.button("重算歷史勝率", key="wr_recalc"):
+                    scans_df = pd.read_parquet(scans_path)
+                    cfg_h = dict(cfg_saved)
+                    cfg_h.update({"stop_profit_pct": wr_sp,
+                                  "fixed_loss_pct": wr_fl})
+                    wr_bar = st.progress(0.0, text="逐日重算中…")
+
+                    def _wr_prog(done: int, total: int) -> None:
+                        if done % 5 == 0 or done == total:
+                            wr_bar.progress(done / total,
+                                            text=f"逐日重算中… {done}/{total}")
+
+                    with connect() as conn_h:
+                        wr_new = compute_winrates(conn_h, cfg_h, scans_df,
+                                                  today=db_latest_date(),
+                                                  progress=_wr_prog)
+                    wr_bar.empty()
+                    st.session_state["wr_custom"] = {
+                        "df": wr_new,
+                        "desc": f"停利 {wr_sp}%、停損 {wr_fl}%",
+                    }
+                    st.rerun()
+
+    st.divider()
+    st.subheader("單日時光機")
 
     d1, d2 = st.columns(2)
     tm_pick = d1.date_input(

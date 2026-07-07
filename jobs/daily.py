@@ -24,9 +24,11 @@ logger = logging.getLogger(__name__)
 
 
 def run(db_path: str, output_dir: str, date: str | None = None,
-        cfg: dict | None = None, skip_update: bool = False) -> dict:
+        cfg: dict | None = None, skip_update: bool = False,
+        skip_history: bool = False) -> dict:
     """跑完整每日流程，回傳統計 dict。任何單檔失敗記 log 續跑。"""
     from core.backtest import run_backtest  # 延遲載入，避免測試時拉 matplotlib
+    from core.history import refresh
 
     cfg = cfg or load_config("config.json")
     date = date or datetime.datetime.today().strftime("%Y-%m-%d")
@@ -78,6 +80,21 @@ def run(db_path: str, output_dir: str, date: str | None = None,
         with open(os.path.join(day_dir, "meta.json"), "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
 
+        if not skip_history:
+            def _sp(done, total):
+                if done % 10 == 0 or done == total:
+                    logger.info("勝率歷史：補掃名單 %d/%d", done, total)
+
+            def _bp(done, total):
+                if done % 25 == 0 or done == total:
+                    logger.info("勝率歷史：逐日回測 %d/%d", done, total)
+
+            hist_stats = refresh(conn, cfg,
+                                 os.path.join(output_dir, "history"), date,
+                                 scan_progress=_sp, bt_progress=_bp)
+            result["history"] = hist_stats
+            logger.info("勝率歷史更新：%s", hist_stats)
+
         logger.info("每日流程完成：%s", {k: v for k, v in result.items() if k != "errors"})
         if result["errors"]:
             logger.warning("錯誤清單：%s", result["errors"])
@@ -93,10 +110,12 @@ def main():
     parser.add_argument("--date", default=None, help="基準日 YYYY-MM-DD，預設今天")
     parser.add_argument("--config", default="config.json", help="參數檔路徑")
     parser.add_argument("--skip-update", action="store_true", help="跳過股價更新")
+    parser.add_argument("--skip-history", action="store_true", help="跳過勝率歷史更新")
     args = parser.parse_args()
 
     run(args.db, args.output_dir, date=args.date,
-        cfg=load_config(args.config), skip_update=args.skip_update)
+        cfg=load_config(args.config), skip_update=args.skip_update,
+        skip_history=args.skip_history)
 
 
 if __name__ == "__main__":

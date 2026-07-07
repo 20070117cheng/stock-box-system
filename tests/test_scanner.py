@@ -41,6 +41,16 @@ def test_scan_skips_short_history(db):
     assert out.empty
 
 
+def test_scan_reports_progress(db):
+    db.execute("DELETE FROM stock_price_daily")
+    db.commit()
+    _insert_prices(db, "6488", list(np.linspace(100, 120, 80)))
+    calls = []
+    scan(db, dict(DEFAULTS), progress=lambda done, total: calls.append((done, total)))
+    # 每檔公司回報一次（get_companies 過濾後剩 2330、6488 兩檔）
+    assert calls == [(1, 2), (2, 2)]
+
+
 def test_scan_empty_result_has_columns(db):
     db.execute("DELETE FROM stock_price_daily")
     db.commit()

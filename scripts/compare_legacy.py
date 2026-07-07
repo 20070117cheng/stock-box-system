@@ -105,4 +105,4 @@ if failures:
     for f in failures:
         print(" -", f)
     sys.exit(1)
-print("全部對照通過 ✔")
+print("全部對照通過")

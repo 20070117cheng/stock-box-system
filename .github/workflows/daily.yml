@@ -1,0 +1,46 @@
+name: daily-scan-backtest
+
+on:
+  schedule:
+    - cron: "30 7 * * 1-5"   # 台北時間 15:30（UTC+8）
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 從 Release 下載資料庫
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download data -p tw_stock_v2.db --clobber
+
+      - name: 更新股價 + 掃描 + 回測
+        env:
+          PYTHONIOENCODING: utf-8
+        run: python -m jobs.daily --db tw_stock_v2.db --output-dir outputs
+
+      - name: 資料庫存回 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload data tw_stock_v2.db --clobber
+
+      - name: 每日結果 commit 回 repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase
+          git add outputs/
+          git diff --cached --quiet || git commit -m "chore: 每日結果 $(date +%F)"
+          git push

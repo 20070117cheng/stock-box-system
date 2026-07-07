@@ -40,7 +40,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase
+          # 先 commit 再 rebase：outputs/history 已被版控，
+          # 留著未暫存的修改會讓 pull --rebase 直接失敗
           git add outputs/
           git diff --cached --quiet || git commit -m "chore: 每日結果 $(date +%F)"
+          git pull --rebase
           git push

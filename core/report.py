@@ -143,7 +143,8 @@ def build_excel(result: BacktestResult, stock_id: str, stock_name: str) -> bytes
 
         for col_num in range(1, 16):
             c = ws.cell(row=row_num, column=col_num)
-            c.font = c.font if col_num == 15 else font_data
+            if col_num != 15:  # 損益金額欄已依正負設色，不覆蓋
+                c.font = font_data
             c.border = border_thin
         ws.row_dimensions[row_num].height = 20
 

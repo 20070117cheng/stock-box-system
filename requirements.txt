@@ -8,3 +8,4 @@ matplotlib
 pyarrow
 pytest
 requests
+tabulate

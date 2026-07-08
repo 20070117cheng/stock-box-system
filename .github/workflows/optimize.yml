@@ -1,0 +1,77 @@
+name: optimize-params
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  combo:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stop_profit: [6, 8, 10, 12, 15, 20]
+        fixed_loss: [2, 3, 4, 5, 7]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 從 Release 下載資料庫
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download data -p tw_stock_v2.db --clobber
+
+      - name: 單組合整年重算
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python -m jobs.optimize --db tw_stock_v2.db \
+            --scans outputs/history/scans.parquet \
+            --stop-profit ${{ matrix.stop_profit }} \
+            --fixed-loss ${{ matrix.fixed_loss }} \
+            --out opt_out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: result-sp${{ matrix.stop_profit }}-fl${{ matrix.fixed_loss }}
+          path: opt_out/
+
+  aggregate:
+    needs: combo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: opt_out
+          merge-multiple: true
+
+      - name: 彙整結果
+        env:
+          PYTHONIOENCODING: utf-8
+        run: python -m jobs.optimize_aggregate --in opt_out --out outputs/optimize
+
+      - name: 結果 commit 回 repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add outputs/optimize/
+          git diff --cached --quiet || git commit -m "chore: 參數優化結果 $(date +%F)"
+          git pull --rebase
+          git push

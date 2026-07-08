@@ -22,7 +22,8 @@ HEADER = """# 停利停損參數優化結果
 """
 
 
-def aggregate(in_dir: str, out_dir: str) -> pd.DataFrame:
+def aggregate(in_dir: str, out_dir: str,
+              merge_existing: str | None = None) -> pd.DataFrame:
     rows = []
     for path in sorted(glob.glob(os.path.join(in_dir, "**", "*.json"),
                                  recursive=True)):
@@ -31,7 +32,13 @@ def aggregate(in_dir: str, out_dir: str) -> pd.DataFrame:
     if not rows:
         raise SystemExit(f"{in_dir} 內找不到結果 JSON")
 
-    df = pd.DataFrame(rows).sort_values("ret_mean", ascending=False)
+    df = pd.DataFrame(rows)
+    if merge_existing and os.path.exists(merge_existing):
+        old = pd.read_parquet(merge_existing)
+        # 新結果優先，補上這次沒重跑的舊組合
+        df = pd.concat([df, old], ignore_index=True).drop_duplicates(
+            subset=["stop_profit_pct", "fixed_loss_pct"], keep="first")
+    df = df.sort_values("ret_mean", ascending=False)
     os.makedirs(out_dir, exist_ok=True)
     df.to_parquet(os.path.join(out_dir, "results.parquet"))
 
@@ -66,8 +73,10 @@ def main():
     p = argparse.ArgumentParser(description="彙整優化結果")
     p.add_argument("--in", dest="in_dir", required=True)
     p.add_argument("--out", dest="out_dir", required=True)
+    p.add_argument("--merge-existing", default=None,
+                   help="既有 results.parquet，這次沒跑到的組合沿用舊值")
     a = p.parse_args()
-    df = aggregate(a.in_dir, a.out_dir)
+    df = aggregate(a.in_dir, a.out_dir, merge_existing=a.merge_existing)
     print(df.head(10).to_string(index=False))
 
 

@@ -64,3 +64,29 @@ def test_aggregate_builds_matrix_and_summary(tmp_path):
     assert (out_dir / "results.parquet").exists()
     md = (out_dir / "summary.md").read_text(encoding="utf-8")
     assert "全年平均報酬" in md and "後半年平均報酬" in md
+
+
+def test_aggregate_merges_existing_new_wins(tmp_path):
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    base = {"today": "2026-07-08", "settled_days": 100, "winrate_mean": 50.0,
+            "ret_first": 1.0, "ret_second": 2.0, "winrate_first": 45.0,
+            "winrate_second": 55.0, "ret_now_mean": 3.0}
+    # 這次跑的新組合：(5,3) 與重跑的 (10,3)
+    for sp, ret in [(5, 9.0), (10, 6.0)]:
+        (in_dir / f"sp{sp}_fl3.json").write_text(json.dumps(
+            {**base, "stop_profit_pct": sp, "fixed_loss_pct": 3, "ret_mean": ret}),
+            encoding="utf-8")
+    # 舊結果：(10,3) 舊值應被蓋掉、(20,3) 應保留
+    old = pd.DataFrame([
+        {**base, "stop_profit_pct": 10, "fixed_loss_pct": 3, "ret_mean": 1.0},
+        {**base, "stop_profit_pct": 20, "fixed_loss_pct": 3, "ret_mean": 4.0},
+    ])
+    old_path = tmp_path / "old.parquet"
+    old.to_parquet(old_path)
+
+    df = aggregate(str(in_dir), str(tmp_path / "out"),
+                   merge_existing=str(old_path))
+    assert len(df) == 3
+    assert float(df[(df["stop_profit_pct"] == 10)]["ret_mean"].iloc[0]) == 6.0
+    assert float(df[(df["stop_profit_pct"] == 20)]["ret_mean"].iloc[0]) == 4.0

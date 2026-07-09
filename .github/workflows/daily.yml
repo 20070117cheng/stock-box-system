@@ -2,7 +2,10 @@ name: daily-scan-backtest
 
 on:
   schedule:
-    - cron: "30 7 * * 1-5"   # 台北時間 15:30（UTC+8）
+    # GitHub 排程常延遲數十分鐘～數小時，設兩條互為備援；
+    # 每日流程冪等，重複執行只會覆蓋相同結果
+    - cron: "30 7 * * 1-5"    # 台北時間 15:30（UTC+8）
+    - cron: "30 10 * * 1-5"   # 台北時間 18:30 備援
   workflow_dispatch: {}
 
 permissions:

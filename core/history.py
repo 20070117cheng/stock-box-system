@@ -51,6 +51,18 @@ def scan_params(cfg: dict) -> dict:
         params.update({
             "surge_lookback_days": int(cfg["surge_lookback_days"]),
             "surge_rebound_min_pct": float(cfg["surge_rebound_min_pct"])})
+    filters = sorted(f for f in cfg.get("scan_filters", []) if f)
+    if filters:
+        params["scan_filters"] = filters
+        if "volume" in filters:
+            params.update({"volume_surge_ratio": float(cfg["volume_surge_ratio"]),
+                           "volume_avg_days": int(cfg["volume_avg_days"])})
+        if "regime" in filters:
+            params.update({"regime_symbol": str(cfg["regime_symbol"]),
+                           "regime_ma_days": int(cfg["regime_ma_days"])})
+        if "rs" in filters:
+            params.update({"rs_top_pct": float(cfg["rs_top_pct"]),
+                           "rs_lookback_days": int(cfg["rs_lookback_days"])})
     return params
 
 

@@ -23,11 +23,14 @@ def main():
     p.add_argument("--out", required=True, help="歷史輸出資料夾")
     p.add_argument("--mode", default="pullback",
                    choices=["near_high", "pullback", "surge"])
+    p.add_argument("--filters", default="",
+                   help="逗號分隔的疊加過濾，如 volume,regime,rs")
     p.add_argument("--config", default="config.json")
     a = p.parse_args()
 
     cfg = load_config(a.config)
     cfg["scan_mode"] = a.mode
+    cfg["scan_filters"] = [f.strip() for f in a.filters.split(",") if f.strip()]
     conn = sqlite3.connect(a.db)
     try:
         today = conn.execute(

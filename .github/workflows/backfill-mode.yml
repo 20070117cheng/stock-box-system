@@ -8,6 +8,9 @@ on:
         default: "pullback"
         type: choice
         options: [pullback, near_high, surge]
+      filters:
+        description: "疊加過濾（逗號分隔：volume,regime,rs）"
+        default: ""
 
 permissions:
   contents: write
@@ -33,16 +36,21 @@ jobs:
       - name: 回填勝率歷史
         env:
           PYTHONIOENCODING: utf-8
+          FILTERS: ${{ inputs.filters }}
         run: |
+          OUT="outputs/history_${{ inputs.mode }}"
+          if [ -n "$FILTERS" ]; then OUT="${OUT}_$(echo "$FILTERS" | tr ',' '-')"; fi
           python -m jobs.backfill_history --db tw_stock_v2.db \
-            --out "outputs/history_${{ inputs.mode }}" \
-            --mode "${{ inputs.mode }}"
+            --out "$OUT" --mode "${{ inputs.mode }}" --filters "$FILTERS"
 
       - name: 結果 commit 回 repo
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add outputs/
-          git diff --cached --quiet || git commit -m "chore: ${{ inputs.mode }} 勝率歷史回填 $(date +%F)"
-          git pull --rebase
-          git push
+          git diff --cached --quiet || git commit -m "chore: ${{ inputs.mode }} ${{ inputs.filters }} 勝率歷史回填 $(date +%F)"
+          # 多個回填平行跑時 push 可能撞車，重試三次
+          for i in 1 2 3; do
+            git pull --rebase && git push && break
+            sleep 15
+          done

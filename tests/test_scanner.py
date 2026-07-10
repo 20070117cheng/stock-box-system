@@ -6,13 +6,21 @@ from core.config import DEFAULTS
 from core.scanner import scan
 
 
-def _insert_prices(db, sid, closes, start="2026-01-01"):
+def _insert_prices(db, sid, closes, start="2026-01-01", volumes=None):
     dates = pd.bdate_range(start, periods=len(closes))
+    vols = volumes if volumes is not None else [5000] * len(closes)
     rows = [(sid, dt.strftime("%Y-%m-%d"), float(c), float(c) * 1.01,
-             float(c) * 0.99, float(c), 5000) for dt, c in zip(dates, closes)]
+             float(c) * 0.99, float(c), int(v))
+            for dt, c, v in zip(dates, closes, vols)]
     db.executemany(
         "INSERT OR REPLACE INTO stock_price_daily VALUES (?,?,?,?,?,?,?)", rows)
     db.commit()
+
+
+# 會通過 near_high 檢查的收盤序列（緩漲、回檔壓K、末日強拉金叉創高）
+def _qualifying_closes(base_start=100.0):
+    return (list(np.linspace(base_start, 120, 80))
+            + [112, 108, 105, 103, 102, 101, 100, 124])
 
 
 def test_scan_picks_golden_cross_near_high(db):
@@ -57,6 +65,52 @@ def test_scan_empty_result_has_columns(db):
     out = scan(db, dict(DEFAULTS))
     assert out.empty
     assert "代號" in out.columns  # 空結果也要有欄位，下游才不會炸
+
+
+# ---------- 疊加過濾 ----------
+def test_volume_filter_requires_surge_volume(db):
+    db.execute("DELETE FROM stock_price_daily")
+    db.commit()
+    closes = _qualifying_closes()
+    # 6488 末日量 9000 ≥ 均量5000×1.5；2330 末日量 5000 → 被濾掉
+    _insert_prices(db, "6488", closes,
+                   volumes=[5000] * (len(closes) - 1) + [9000])
+    _insert_prices(db, "2330", closes)
+    cfg = dict(DEFAULTS)
+    cfg["scan_filters"] = ["volume"]
+    out = scan(db, cfg)
+    assert list(out["代號"]) == ["6488"]
+
+
+def test_regime_filter_blocks_when_index_below_ma(db):
+    db.execute("DELETE FROM stock_price_daily")
+    db.commit()
+    _insert_prices(db, "6488", _qualifying_closes())
+    cfg = dict(DEFAULTS)
+    cfg["scan_filters"] = ["regime"]
+    cfg["regime_ma_days"] = 60
+
+    # 0050 一路下跌（收盤在均線下）→ 整批不出訊號
+    _insert_prices(db, "0050", list(np.linspace(200, 100, 88)))
+    assert scan(db, cfg).empty
+
+    # 0050 一路上漲（站上均線）→ 正常出訊號
+    _insert_prices(db, "0050", list(np.linspace(100, 200, 88)))
+    out = scan(db, cfg)
+    assert list(out["代號"]) == ["6488"]
+
+
+def test_rs_filter_keeps_only_top_performers(db):
+    db.execute("DELETE FROM stock_price_daily")
+    db.commit()
+    # 兩檔都通過 near_high；6488 三個月漲幅大、2330 漲幅小 → 只留 6488
+    _insert_prices(db, "6488", _qualifying_closes(base_start=80.0))
+    _insert_prices(db, "2330", _qualifying_closes(base_start=118.0))
+    cfg = dict(DEFAULTS)
+    cfg["scan_filters"] = ["rs"]
+    cfg["rs_top_pct"] = 50.0
+    out = scan(db, cfg)
+    assert list(out["代號"]) == ["6488"]
 
 
 # ---------- pullback 模式 ----------

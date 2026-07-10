@@ -18,6 +18,11 @@ surge（《大漲的訊號》買股公式技術面，移植自 stock-breakout-si
 2. 反彈幅度 =（突破價−谷底）/（歷史峰−谷底）≥ surge_rebound_min_pct %
 限制：本 DB 僅約 3 年價格史，歷史峰只能回看 3 年（原書用 8 年）；
 基本面檢核（獲利/營收成長、PE）無財報資料，不在此模式內。
+
+疊加過濾（cfg["scan_filters"]，可與任何模式組合）：
+- volume：訊號日成交量 ≥ 20 日均量 × 1.5（達瓦斯/歐尼爾的量能確認）
+- regime：0050 收盤站上 200 日均線才出訊號（歐尼爾 M／林則行多空判別）
+- rs：近 3 個月報酬排全市場前 20%（歐尼爾 RS／橫斷面動能）
 """
 import datetime
 import logging
@@ -143,8 +148,21 @@ def scan(conn, cfg: dict, as_of: str | None = None,
     end = ref_date.strftime("%Y-%m-%d")
 
     check = _MODE_CHECKS[cfg.get("scan_mode", "near_high")]
+    filters = [f for f in cfg.get("scan_filters", []) if f]
 
-    matched = []
+    # 大盤濾網：代理標的收盤在長均線下 → 當日整批不出訊號
+    if "regime" in filters:
+        idx = load_prices(conn, str(cfg["regime_symbol"]),
+                          start=three_years_ago, end=end)
+        ma_days = int(cfg["regime_ma_days"])
+        if (len(idx) < ma_days
+                or float(idx["close"].iloc[-1])
+                < float(idx["close"].iloc[-ma_days:].mean())):
+            return pd.DataFrame(columns=COLUMNS)
+
+    rs_lb = int(cfg["rs_lookback_days"])
+    all_rets: list[float] = []          # rs 用：全市場報酬分布
+    matched = []                        # (row, ret3m)
     companies = get_companies(conn)
     total = len(companies)
     for pos, (_, comp) in enumerate(companies.iterrows(), start=1):
@@ -155,9 +173,23 @@ def scan(conn, cfg: dict, as_of: str | None = None,
         if df.empty or len(df) < 60:
             continue
         try:
+            ret3m = None
+            if "rs" in filters and len(df) > rs_lb:
+                ret3m = float(df["close"].iloc[-1]
+                              / df["close"].iloc[-(rs_lb + 1)] - 1.0)
+                all_rets.append(ret3m)
             extra = check(df, cfg)
             if extra is None:
                 continue
+            if "volume" in filters:
+                vol_days = int(cfg["volume_avg_days"])
+                vols = df["volume"]
+                if len(vols) < vol_days + 1:
+                    continue
+                avg_vol = float(vols.iloc[-(vol_days + 1):-1].mean())
+                if (avg_vol <= 0 or float(vols.iloc[-1])
+                        < avg_vol * float(cfg["volume_surge_ratio"])):
+                    continue
             high_3y = float(df["high"].max())
             high_close_3y = float(df["close"].max())
             current_price = float(df["close"].iloc[-1])
@@ -173,9 +205,16 @@ def scan(conn, cfg: dict, as_of: str | None = None,
                 "距收盤高點比例": f"{round(current_price / high_close_3y * 100, 2)}%",
             }
             row.update(extra)
-            matched.append(row)
+            matched.append((row, ret3m))
         except Exception as e:
             logger.warning("%s 計算發生錯誤: %s", sid, e)
             continue
 
-    return pd.DataFrame(matched, columns=COLUMNS)
+    if "rs" in filters and matched and all_rets:
+        import numpy as np
+        threshold = float(np.percentile(all_rets,
+                                        100.0 - float(cfg["rs_top_pct"])))
+        matched = [(r, rt) for r, rt in matched
+                   if rt is not None and rt >= threshold]
+
+    return pd.DataFrame([r for r, _ in matched], columns=COLUMNS)

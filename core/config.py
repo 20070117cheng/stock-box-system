@@ -18,6 +18,13 @@ DEFAULTS = {
     "pullback_recency_days": 20,    # pullback：3 年高需發生在近 N 個交易日內
     "surge_lookback_days": 490,     # surge：突破近 N 個交易日高（書 p.63 約 2 年）
     "surge_rebound_min_pct": 60.0,  # surge：反彈幅度下限 %（書 p.70 買股公式2）
+    "scan_filters": [],             # 疊加過濾：volume=量能｜regime=大盤濾網｜rs=相對強度
+    "volume_surge_ratio": 1.5,      # volume：訊號日成交量 ≥ N 日均量 × 此倍數
+    "volume_avg_days": 20,          # volume：均量天數
+    "regime_symbol": "0050",        # regime：大盤代理標的
+    "regime_ma_days": 200,          # regime：代理標的需站上 N 日均線
+    "rs_top_pct": 20.0,             # rs：3個月報酬需排全市場前 N%
+    "rs_lookback_days": 60,         # rs：報酬回看交易日數
 }
 
 

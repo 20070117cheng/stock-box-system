@@ -39,9 +39,15 @@ def trading_dates(conn, start: str, end: str) -> list[str]:
 
 def scan_params(cfg: dict) -> dict:
     """會影響選股名單的參數（用來判斷快取是否失效）。"""
-    return {"high_threshold_pct": float(cfg["high_threshold_pct"]),
-            "kd_period": int(cfg["kd_period"]),
-            "near_cross_gap": float(cfg["near_cross_gap"])}
+    params = {"scan_mode": cfg.get("scan_mode", "near_high"),
+              "high_threshold_pct": float(cfg["high_threshold_pct"]),
+              "kd_period": int(cfg["kd_period"]),
+              "near_cross_gap": float(cfg["near_cross_gap"])}
+    if params["scan_mode"] == "pullback":
+        params.update({
+            "pullback_max_pct": float(cfg["pullback_max_pct"]),
+            "pullback_recency_days": int(cfg["pullback_recency_days"])})
+    return params
 
 
 def update_scan_cache(conn, cfg: dict, dates: list[str],

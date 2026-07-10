@@ -1,0 +1,48 @@
+name: backfill-mode
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "掃描模式"
+        default: "pullback"
+        type: choice
+        options: [pullback, near_high]
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 從 Release 下載資料庫
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download data -p tw_stock_v2.db --clobber
+
+      - name: 回填勝率歷史
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python -m jobs.backfill_history --db tw_stock_v2.db \
+            --out "outputs/history_${{ inputs.mode }}" \
+            --mode "${{ inputs.mode }}"
+
+      - name: 結果 commit 回 repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add outputs/
+          git diff --cached --quiet || git commit -m "chore: ${{ inputs.mode }} 勝率歷史回填 $(date +%F)"
+          git pull --rebase
+          git push

@@ -1,5 +1,6 @@
 {
   "scan_params": {
+    "scan_mode": "near_high",
     "high_threshold_pct": 95.0,
     "kd_period": 9,
     "near_cross_gap": 2.0

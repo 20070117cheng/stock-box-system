@@ -1,0 +1,12 @@
+{
+  "scan_params": {
+    "scan_mode": "pullback",
+    "high_threshold_pct": 95.0,
+    "kd_period": 9,
+    "near_cross_gap": 2.0,
+    "pullback_max_pct": 7.0,
+    "pullback_recency_days": 20
+  },
+  "winrate_window_months": 3,
+  "updated": "2026-07-09"
+}

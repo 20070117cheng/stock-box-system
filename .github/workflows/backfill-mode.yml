@@ -7,7 +7,7 @@ on:
         description: "掃描模式"
         default: "pullback"
         type: choice
-        options: [pullback, near_high]
+        options: [pullback, near_high, surge]
 
 permissions:
   contents: write

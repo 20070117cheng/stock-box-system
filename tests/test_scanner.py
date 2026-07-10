@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 import numpy as np
 import pandas as pd
 
@@ -113,6 +113,53 @@ def test_pullback_rejects_stale_high(db):
     closes = _wave_base() + [122.0, 121.5] * 12 + [121.0, 124.9]
     _insert_prices(db, "6488", closes, start=MONDAY)
     out = scan(db, _pullback_cfg())
+    assert out.empty
+
+
+# ---------- surge 模式 ----------
+def _surge_cfg():
+    cfg = dict(DEFAULTS)
+    cfg["scan_mode"] = "surge"
+    return cfg
+
+
+SURGE_START = "2024-03-04"  # 591 根 K 棒須在掃描日（今天）之前結束
+
+
+def _surge_base(recover_to, today):
+    """歷史峰 100 → 谷底 40 → 緩步回升 → 今日突破近490日高。
+
+    反彈幅度 =（today − 40）/（100 − 40）。
+    """
+    return ([100.0] * 30 + list(np.linspace(100, 40, 60)) + [40.0] * 100
+            + list(np.linspace(40, recover_to, 400)) + [today])
+
+
+def test_surge_picks_breakout_with_strong_rebound(db):
+    db.execute("DELETE FROM stock_price_daily")
+    db.commit()
+    # 回升到 80、今日 81：突破近490日高、反彈 (81-40)/60=68% ≥60%
+    _insert_prices(db, "6488", _surge_base(80, 81), start=SURGE_START)
+    out = scan(db, _surge_cfg())
+    assert list(out["代號"]) == ["6488"]
+    assert "突破490日高" in out.iloc[0]["KD狀態"]
+
+
+def test_surge_rejects_weak_rebound(db):
+    db.execute("DELETE FROM stock_price_daily")
+    db.commit()
+    # 回升到 70、今日 71：有突破但反彈 (71-40)/60=52% <60% → 不選
+    _insert_prices(db, "6488", _surge_base(70, 71), start=SURGE_START)
+    out = scan(db, _surge_cfg())
+    assert out.empty
+
+
+def test_surge_rejects_no_breakout(db):
+    db.execute("DELETE FROM stock_price_daily")
+    db.commit()
+    # 今日 79.9 未超過先前 490 日最高（80）→ 不選
+    _insert_prices(db, "6488", _surge_base(80, 79.9), start=SURGE_START)
+    out = scan(db, _surge_cfg())
     assert out.empty
 
 

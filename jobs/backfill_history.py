@@ -22,7 +22,7 @@ def main():
     p.add_argument("--db", required=True)
     p.add_argument("--out", required=True, help="歷史輸出資料夾")
     p.add_argument("--mode", default="pullback",
-                   choices=["near_high", "pullback"])
+                   choices=["near_high", "pullback", "surge"])
     p.add_argument("--config", default="config.json")
     a = p.parse_args()
 

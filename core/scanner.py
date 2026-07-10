@@ -12,6 +12,12 @@ pullback（創高回檔不破前高）：
 3. 現價 < 高點，回檔 ≤ pullback_max_pct %
 4. 回檔期間最低收盤 > 當前箱體箱底（突破後新箱底＝突破前的舊箱頂）
 5. KD 剛金叉（不含準備交叉）
+
+surge（《大漲的訊號》買股公式技術面，移植自 stock-breakout-signals）：
+1. 今日收盤突破先前 surge_lookback_days（490≈2年）個交易日最高收盤
+2. 反彈幅度 =（突破價−谷底）/（歷史峰−谷底）≥ surge_rebound_min_pct %
+限制：本 DB 僅約 3 年價格史，歷史峰只能回看 3 年（原書用 8 年）；
+基本面檢核（獲利/營收成長、PE）無財報資料，不在此模式內。
 """
 import datetime
 import logging
@@ -89,7 +95,38 @@ def _check_pullback(df, cfg: dict) -> dict | None:
             "KD狀態": f"回檔{drawdown_pct:.1f}%後剛金叉"}
 
 
-_MODE_CHECKS = {"near_high": _check_near_high, "pullback": _check_pullback}
+def _check_surge(df, cfg: dict) -> dict | None:
+    """surge 模式：今日突破近 490 日高 + 反彈幅度 ≥60%（大漲的訊號公式1、2）。"""
+    lookback = int(cfg["surge_lookback_days"])
+    closes = df["close"]
+    if len(closes) < lookback + 1:
+        return None
+    prior_max = float(closes.iloc[-(lookback + 1):-1].max())
+    current_price = float(closes.iloc[-1])
+    if current_price <= prior_max:
+        return None                                   # 今天沒有突破
+
+    # 反彈幅度：歷史峰（不含今日）→ 峰後谷底 → 今日突破價
+    hist = closes.iloc[:-1]
+    peak_pos = hist.idxmax()
+    peak = float(hist.max())
+    after_peak = hist.loc[peak_pos:]
+    trough = float(after_peak.min()) if len(after_peak) > 1 else peak
+    if current_price >= peak or peak - trough <= 0:
+        ratio = 1.0                                   # 已創資料期間新高
+    else:
+        ratio = (current_price - trough) / (peak - trough)
+    if ratio * 100 < float(cfg["surge_rebound_min_pct"]):
+        return None
+
+    df = calc_kd(df, period=int(cfg["kd_period"]))
+    return {"K值": round(float(df["k"].iloc[-1]), 2),
+            "D值": round(float(df["d"].iloc[-1]), 2),
+            "KD狀態": f"突破{lookback}日高,反彈{ratio * 100:.0f}%"}
+
+
+_MODE_CHECKS = {"near_high": _check_near_high, "pullback": _check_pullback,
+                "surge": _check_surge}
 
 
 def scan(conn, cfg: dict, as_of: str | None = None,

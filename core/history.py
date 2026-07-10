@@ -47,6 +47,10 @@ def scan_params(cfg: dict) -> dict:
         params.update({
             "pullback_max_pct": float(cfg["pullback_max_pct"]),
             "pullback_recency_days": int(cfg["pullback_recency_days"])})
+    elif params["scan_mode"] == "surge":
+        params.update({
+            "surge_lookback_days": int(cfg["surge_lookback_days"]),
+            "surge_rebound_min_pct": float(cfg["surge_rebound_min_pct"])})
     return params
 
 

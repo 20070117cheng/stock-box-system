@@ -13,9 +13,11 @@ DEFAULTS = {
     "kd_period": 9,                 # KD 期數
     "near_cross_gap": 2.0,          # 「準備交叉」的 D-K 最大差距
     "winrate_window_months": 3,     # 勝率歷史的固定觀察窗（月）
-    "scan_mode": "near_high",       # near_high=貼近高點｜pullback=創高回檔不破前高
+    "scan_mode": "near_high",       # near_high=貼近高點｜pullback=創高回檔｜surge=大漲訊號
     "pullback_max_pct": 7.0,        # pullback：距 3 年高回檔上限 %
     "pullback_recency_days": 20,    # pullback：3 年高需發生在近 N 個交易日內
+    "surge_lookback_days": 490,     # surge：突破近 N 個交易日高（書 p.63 約 2 年）
+    "surge_rebound_min_pct": 60.0,  # surge：反彈幅度下限 %（書 p.70 買股公式2）
 }
 
 

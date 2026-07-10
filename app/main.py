@@ -282,25 +282,11 @@ with tab_stock:
         if os.path.exists(p):
             scan_ids = list(pd.read_parquet(p)["代號"])
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        options = scan_ids + [s for s in id2name if s not in scan_ids]
-        sid = st.selectbox(
-            "選擇股票（前面是今日入選名單）", options,
-            format_func=lambda s: f"{s} {id2name.get(s, '')}")
-    with col2:
-        view_range = st.radio(
-            "看圖範圍", ["1個月", "3個月", "6個月", "1年", "3年", "自訂"],
-            index=2, horizontal=True)
-
-    if view_range == "自訂":
-        c1, c2 = st.columns(2)
-        view_start = c1.date_input("圖表起日", value=today - relativedelta(years=1))
-        view_end = c2.date_input("圖表迄日", value=today)
-    else:
-        months = {"1個月": 1, "3個月": 3, "6個月": 6, "1年": 12, "3年": 36}[view_range]
-        view_start = today - relativedelta(months=months)
-        view_end = today
+    options = scan_ids + [s for s in id2name if s not in scan_ids]
+    sid = st.selectbox(
+        "選擇股票（前面是今日入選名單）", options,
+        format_func=lambda s: f"{s} {id2name.get(s, '')}")
+    st.caption("圖表顯示資料庫內全部歷史，可用滾輪縮放、拖曳平移，雙擊還原。")
 
     run_bt = st.button("重新回測", type="primary")
 
@@ -324,7 +310,11 @@ with tab_stock:
         bt = st.session_state["bt_result"]
 
         name = id2name.get(sid, get_stock_name(connect(), sid))
-        render_stock_chart(sid, name, bt, view_start, view_end,
+        with connect() as _c:
+            first_date = _c.execute(
+                "SELECT MIN(date) FROM stock_price_daily WHERE stock_id=?",
+                (sid,)).fetchone()[0]
+        render_stock_chart(sid, name, bt, first_date or today, today,
                            kd_period=int(cfg_now["kd_period"]))
 
         st.info(f"**明日交易提示**：{bt.tomorrow_desc}")

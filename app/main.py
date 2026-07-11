@@ -34,6 +34,31 @@ CONFIG_PATH = os.path.join(ROOT, "config.json")
 
 st.set_page_config(page_title="箱型選股回測系統", layout="wide")
 
+# 介面風格對齊 stock-breakout-signals 的儀表板（深藍頁首＋膠囊分頁＋白卡片）
+st.markdown("""
+<style>
+.stApp { background: #f1f5f9; }
+header[data-testid="stHeader"] { background: rgba(241,245,249,.8); }
+h1, h2, h3, h4, p, li, label { font-family: "Microsoft JhengHei", "PingFang TC",
+  system-ui, sans-serif; }
+.stTabs [role="tablist"] { background: #0f172a; padding: 8px 12px;
+  border-radius: 12px; gap: 4px; border-bottom: 0; }
+.stTabs [data-testid="stTab"] { background: #1e293b; color: #cbd5e1;
+  border-radius: 999px; padding: 4px 16px; border: 0; }
+.stTabs [data-testid="stTab"] p { color: inherit; }
+.stTabs [data-testid="stTab"]:hover { color: #fff; }
+.stTabs [aria-selected="true"] { background: #2563eb !important;
+  color: #fff !important; font-weight: 700; }
+[data-testid="stMetric"] { background: #fff; border-radius: 12px;
+  padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+[data-testid="stExpander"] { background: #fff; border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.stTabs h3 { font-size: 18px; border-left: 4px solid #2563eb;
+  padding-left: 10px; }
+[data-testid="stSidebar"] { background: #fff; }
+</style>
+""", unsafe_allow_html=True)
+
 
 # ---------- 資料來源 ----------
 def _local_db_arg() -> str | None:
@@ -244,8 +269,14 @@ with st.sidebar:
             save_config(cfg_now, CONFIG_PATH)
             st.success("已存到本機 config.json。")
 
-st.title("箱型選股回測系統")
-st.caption(f"資料庫最新日期：**{db_latest_date()}**（每個交易日 15:30 後自動更新）")
+st.markdown(f"""
+<div style="background:#0f172a;color:#fff;padding:20px 24px;border-radius:12px;
+            margin-bottom:12px">
+  <h1 style="margin:0 0 4px;font-size:22px;color:#fff">箱型選股回測系統</h1>
+  <p style="margin:0;color:#94a3b8;font-size:13px">達瓦斯箱型策略自動掃描台股（上市＋上櫃）
+  ｜資料庫最新日期：{db_latest_date()}（每個交易日 15:30 後自動更新）</p>
+</div>
+""", unsafe_allow_html=True)
 
 tab_scan, tab_stock, tab_time = st.tabs(["每日選股", "個股分析", "時光機"])
 

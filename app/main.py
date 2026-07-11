@@ -50,6 +50,7 @@ h1, h2, h3, h4, p, li, label { font-family: "Microsoft JhengHei", "PingFang TC",
 .stTabs [data-testid="stTab"]:hover { color: #0f172a; }
 .stTabs [aria-selected="true"] { background: #2563eb !important;
   color: #fff !important; font-weight: 700; }
+.stTabs .react-aria-SelectionIndicator { display: none; }
 [data-testid="stMetric"] { background: #fff; border-radius: 12px;
   padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 [data-testid="stExpander"] { background: #fff; border-radius: 12px;
@@ -272,11 +273,19 @@ def render_settings():
             st.success("已存到本機 config.json。")
     return buy_date, end_date, cfg_now
 
+# 標題卡漸層（使用者提供的 Untitled blend，雜訊層由 gen 腳本產生）
+_blend_css = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "header_blend.css")
+if os.path.exists(_blend_css):
+    with open(_blend_css, encoding="utf-8") as _f:
+        st.markdown(f"<style>{_f.read()}</style>", unsafe_allow_html=True)
+
 st.markdown(f"""
-<div style="background:#fff;color:#0f172a;padding:20px 24px;border-radius:12px;
-            margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)">
-  <h1 style="margin:0 0 4px;font-size:22px;color:#0f172a">箱型選股回測系統</h1>
-  <p style="margin:0;color:#64748b;font-size:13px">達瓦斯箱型策略自動掃描台股（上市＋上櫃）
+<div class="gradient-untitled" style="color:#2A2622;padding:20px 24px;
+            border-radius:12px;margin-bottom:12px;
+            box-shadow:0 1px 3px rgba(0,0,0,.08)">
+  <h1 style="margin:0 0 4px;font-size:22px;color:#2A2622">箱型選股回測系統</h1>
+  <p style="margin:0;color:#4a5568;font-size:13px">達瓦斯箱型策略自動掃描台股（上市＋上櫃）
   ｜資料庫最新日期：{db_latest_date()}（每個交易日 15:30 後自動更新）</p>
 </div>
 """, unsafe_allow_html=True)

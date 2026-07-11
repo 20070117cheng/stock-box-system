@@ -41,12 +41,13 @@ st.markdown("""
 header[data-testid="stHeader"] { background: rgba(241,245,249,.8); }
 h1, h2, h3, h4, p, li, label { font-family: "Microsoft JhengHei", "PingFang TC",
   system-ui, sans-serif; }
-.stTabs [role="tablist"] { background: #0f172a; padding: 8px 12px;
-  border-radius: 12px; gap: 4px; border-bottom: 0; }
-.stTabs [data-testid="stTab"] { background: #1e293b; color: #cbd5e1;
+.stTabs [role="tablist"] { background: #fff; padding: 8px 12px;
+  border-radius: 12px; gap: 4px; border-bottom: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.stTabs [data-testid="stTab"] { background: #f1f5f9; color: #475569;
   border-radius: 999px; padding: 4px 16px; border: 0; }
 .stTabs [data-testid="stTab"] p { color: inherit; }
-.stTabs [data-testid="stTab"]:hover { color: #fff; }
+.stTabs [data-testid="stTab"]:hover { color: #0f172a; }
 .stTabs [aria-selected="true"] { background: #2563eb !important;
   color: #fff !important; font-weight: 700; }
 [data-testid="stMetric"] { background: #fff; border-radius: 12px;
@@ -55,7 +56,6 @@ h1, h2, h3, h4, p, li, label { font-family: "Microsoft JhengHei", "PingFang TC",
   box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .stTabs h3 { font-size: 18px; border-left: 4px solid #2563eb;
   padding-left: 10px; }
-[data-testid="stSidebar"] { background: #fff; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -213,8 +213,8 @@ def show_backtest_detail(bt) -> None:
 cfg_saved = load_config(CONFIG_PATH)
 today = datetime.date.today()
 
-with st.sidebar:
-    st.header("回測設定")
+def render_settings():
+    """回測設定（原側欄內容，現為分頁）。回傳 (buy_date, end_date, cfg_now)。"""
     buy_date = st.date_input(
         "買入日期（回測起算日）",
         value=today - relativedelta(months=int(cfg_saved["default_lookback_months"])),
@@ -243,7 +243,7 @@ with st.sidebar:
     })
 
     st.caption("改完參數後，切到「個股分析」按【重新回測】即生效。"
-               "時光機分頁的參數獨立，不受側欄影響。")
+               "時光機分頁的參數獨立，不受此處影響。")
 
     if st.button("存為預設", help="寫回 config.json，之後每日自動排程改用這組參數"):
         token = st.secrets.get("GITHUB_TOKEN", "")
@@ -270,12 +270,13 @@ with st.sidebar:
             from core.config import save_config
             save_config(cfg_now, CONFIG_PATH)
             st.success("已存到本機 config.json。")
+    return buy_date, end_date, cfg_now
 
 st.markdown(f"""
-<div style="background:#0f172a;color:#fff;padding:20px 24px;border-radius:12px;
-            margin-bottom:12px">
-  <h1 style="margin:0 0 4px;font-size:22px;color:#fff">箱型選股回測系統</h1>
-  <p style="margin:0;color:#94a3b8;font-size:13px">達瓦斯箱型策略自動掃描台股（上市＋上櫃）
+<div style="background:#fff;color:#0f172a;padding:20px 24px;border-radius:12px;
+            margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+  <h1 style="margin:0 0 4px;font-size:22px;color:#0f172a">箱型選股回測系統</h1>
+  <p style="margin:0;color:#64748b;font-size:13px">達瓦斯箱型策略自動掃描台股（上市＋上櫃）
   ｜資料庫最新日期：{db_latest_date()}（每個交易日 15:30 後自動更新）</p>
 </div>
 """, unsafe_allow_html=True)
@@ -299,8 +300,12 @@ if os.path.exists(light_path):
 </div>
 """, unsafe_allow_html=True)
 
-tab_scan, tab_stock, tab_time, tab_hold, tab_paper = st.tabs(
-    ["每日選股", "個股分析", "時光機", "持股監控", "虛擬操盤"])
+tab_scan, tab_stock, tab_time, tab_hold, tab_paper, tab_cfg = st.tabs(
+    ["每日選股", "個股分析", "時光機", "持股監控", "虛擬操盤", "回測設定"])
+
+# 設定分頁先執行，其他分頁才拿得到 buy_date/end_date/cfg_now
+with tab_cfg:
+    buy_date, end_date, cfg_now = render_settings()
 
 # ---------- Tab 1：每日選股 ----------
 with tab_scan:
@@ -329,7 +334,7 @@ with tab_scan:
                 st.dataframe(show_df, use_container_width=True,
                              hide_index=True)
                 st.caption(f"建議股數＝總資金 {cap:,.0f} 元 × 單檔上限 {pct:.0f}%"
-                           "，以零股計（側欄無此設定，改 config.json）。"
+                           "，以零股計（金額在 config.json 調整）。"
                            "到「個股分析」分頁可看走勢圖與回測明細。")
         else:
             st.warning("該日期缺少掃描檔。")

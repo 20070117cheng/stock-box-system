@@ -317,8 +317,8 @@ with tab_scan:
             else:
                 st.subheader(f"{pick_date} 入選 {len(scan_df)} 檔")
                 from core.position import buy_cost, suggest_shares
-                cap = float(cfg_saved["total_capital"])
-                pct = float(cfg_saved["position_pct"])
+                cap = float(cfg_saved.get("total_capital", 50000))
+                pct = float(cfg_saved.get("position_pct", 10.0))
                 show_df = scan_df.copy()
                 show_df["建議股數"] = show_df["當前價"].map(
                     lambda p: suggest_shares(float(p), cap, pct))
@@ -603,7 +603,7 @@ with tab_paper:
         state = json.load(open(state_path, encoding="utf-8")) \
             if os.path.exists(state_path) else {"cash": 0, "holdings": {}}
         last = eq.iloc[-1]
-        start_cap = float(cfg_saved["total_capital"])
+        start_cap = float(cfg_saved.get("total_capital", 50000))
         ret_pct = (float(last["總值"]) / start_cap - 1) * 100
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("目前總值", f"{last['總值']:,.0f} 元",

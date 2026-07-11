@@ -25,6 +25,9 @@ DEFAULTS = {
     "regime_ma_days": 200,          # regime：代理標的需站上 N 日均線
     "rs_top_pct": 20.0,             # rs：3個月報酬需排全市場前 N%
     "rs_lookback_days": 60,         # rs：報酬回看交易日數
+    "total_capital": 50000,         # 總資金（零股建議股數用）
+    "position_pct": 10.0,           # 單檔上限 %（總資金 × 此比例）
+    "paper_max_new_per_day": 2,     # 虛擬操盤：每日最多新買檔數
 }
 
 

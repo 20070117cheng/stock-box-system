@@ -25,8 +25,10 @@ logger = logging.getLogger(__name__)
 
 def run(db_path: str, output_dir: str, date: str | None = None,
         cfg: dict | None = None, skip_update: bool = False,
-        skip_history: bool = False) -> dict:
+        skip_history: bool = False, skip_portfolio: bool = False) -> dict:
     """跑完整每日流程，回傳統計 dict。任何單檔失敗記 log 續跑。"""
+    import pandas as pd
+
     from core.backtest import run_backtest  # 延遲載入，避免測試時拉 matplotlib
     from core.history import refresh
 
@@ -80,6 +82,35 @@ def run(db_path: str, output_dir: str, date: str | None = None,
         with open(os.path.join(day_dir, "meta.json"), "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
 
+        if not skip_portfolio:
+            from core.holdings import build_report
+            from core.market import market_light, new_high_ratio_series
+            from core.paper import run_day
+
+            series = new_high_ratio_series(conn, date)
+            series.to_parquet(os.path.join(output_dir, "market.parquet"))
+            light = market_light(series)
+            with open(os.path.join(output_dir, "market_light.json"), "w",
+                      encoding="utf-8") as f:
+                json.dump(light, f, ensure_ascii=False, indent=2)
+            result["market"] = light["light"]
+            logger.info("大盤燈號：%s", light)
+
+            if os.path.exists("holdings.csv"):
+                holdings = pd.read_csv("holdings.csv",
+                                       dtype={"stock_id": str})
+                if not holdings.empty:
+                    rep = build_report(conn, cfg, holdings, date)
+                    rep.to_parquet(os.path.join(output_dir,
+                                                "holdings_report.parquet"))
+                    result["holdings"] = len(rep)
+                    logger.info("持股監控：%d 檔", len(rep))
+
+            paper_stats = run_day(conn, cfg, scan_df, date,
+                                  os.path.join(output_dir, "paper"))
+            result["paper"] = paper_stats
+            logger.info("虛擬操盤：%s", paper_stats)
+
         if not skip_history:
             def _sp(done, total):
                 if done % 10 == 0 or done == total:
@@ -111,11 +142,13 @@ def main():
     parser.add_argument("--config", default="config.json", help="參數檔路徑")
     parser.add_argument("--skip-update", action="store_true", help="跳過股價更新")
     parser.add_argument("--skip-history", action="store_true", help="跳過勝率歷史更新")
+    parser.add_argument("--skip-portfolio", action="store_true",
+                        help="跳過燈號/持股監控/虛擬操盤")
     args = parser.parse_args()
 
     run(args.db, args.output_dir, date=args.date,
         cfg=load_config(args.config), skip_update=args.skip_update,
-        skip_history=args.skip_history)
+        skip_history=args.skip_history, skip_portfolio=args.skip_portfolio)
 
 
 if __name__ == "__main__":

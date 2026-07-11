@@ -118,7 +118,8 @@ def run_backtest(df_prices: pd.DataFrame, start_date: str, cfg: dict) -> Backtes
     fixed_loss_pct = float(cfg["fixed_loss_pct"])
     add_position_size = float(cfg["add_position_size"])
     initial_size = float(cfg["initial_size"])
-    entry_price = 0.0  # 自動化模式一律從空手開始（舊腳本固定參數）
+    # 預設 0＝空手開始（自動化模式）；持股監控傳入實際成本承接既有部位
+    entry_price = float(cfg.get("entry_price", 0.0))
 
     df = df_prices.copy().sort_index()
     df = calc_kd(df, period=period)

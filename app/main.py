@@ -119,8 +119,10 @@ def db_latest_date() -> str:
 def list_output_dates() -> list[str]:
     if not os.path.isdir(OUTPUTS_DIR):
         return []
+    import re
     return sorted([d for d in os.listdir(OUTPUTS_DIR)
-                   if os.path.isdir(os.path.join(OUTPUTS_DIR, d))], reverse=True)
+                   if os.path.isdir(os.path.join(OUTPUTS_DIR, d))
+                   and re.fullmatch(r"\d{4}-\d{2}-\d{2}", d)], reverse=True)
 
 
 # ---------- 共用：股價 + KD 雙圖 ----------
@@ -278,7 +280,27 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-tab_scan, tab_stock, tab_time = st.tabs(["每日選股", "個股分析", "時光機"])
+# ---------- 大盤燈號橫幅 ----------
+_LIGHT = {"green": ("#16a34a", "綠燈"), "yellow": ("#ca8a04", "黃燈"),
+          "red": ("#dc2626", "紅燈")}
+light_path = os.path.join(OUTPUTS_DIR, "market_light.json")
+if os.path.exists(light_path):
+    with open(light_path, encoding="utf-8") as f:
+        light = json.load(f)
+    color, label = _LIGHT.get(light.get("light", "yellow"), _LIGHT["yellow"])
+    ratio_txt = (f"創一年新高股比率 {light['ratio']}%"
+                 if light.get("ratio") is not None else "")
+    st.markdown(f"""
+<div style="background:#fff;border-radius:12px;padding:12px 20px;margin-bottom:8px;
+            box-shadow:0 1px 3px rgba(0,0,0,.08)">
+  <span style="display:inline-block;width:12px;height:12px;border-radius:50%;
+               background:{color};margin-right:6px"></span>
+  <b style="color:{color}">{label}</b>　{ratio_txt}　—　{light.get('advice', '')}
+</div>
+""", unsafe_allow_html=True)
+
+tab_scan, tab_stock, tab_time, tab_hold, tab_paper = st.tabs(
+    ["每日選股", "個股分析", "時光機", "持股監控", "虛擬操盤"])
 
 # ---------- Tab 1：每日選股 ----------
 with tab_scan:
@@ -294,8 +316,21 @@ with tab_scan:
                 st.warning(f"{pick_date} 沒有符合條件的股票。")
             else:
                 st.subheader(f"{pick_date} 入選 {len(scan_df)} 檔")
-                st.dataframe(scan_df, use_container_width=True, hide_index=True)
-                st.caption("到「個股分析」分頁可看每一檔的走勢圖與回測明細。")
+                from core.position import buy_cost, suggest_shares
+                cap = float(cfg_saved["total_capital"])
+                pct = float(cfg_saved["position_pct"])
+                show_df = scan_df.copy()
+                show_df["建議股數"] = show_df["當前價"].map(
+                    lambda p: suggest_shares(float(p), cap, pct))
+                show_df["約需金額"] = show_df.apply(
+                    lambda r: round(buy_cost(float(r["當前價"]),
+                                             int(r["建議股數"])))
+                    if r["建議股數"] > 0 else 0, axis=1)
+                st.dataframe(show_df, use_container_width=True,
+                             hide_index=True)
+                st.caption(f"建議股數＝總資金 {cap:,.0f} 元 × 單檔上限 {pct:.0f}%"
+                           "，以零股計（側欄無此設定，改 config.json）。"
+                           "到「個股分析」分頁可看走勢圖與回測明細。")
         else:
             st.warning("該日期缺少掃描檔。")
 
@@ -522,3 +557,82 @@ with tab_time:
                 st.caption("垂直虛線＝選股日。虛線左邊是入選前的走勢，右邊是入選後"
                            "照策略操作的結果。")
                 show_backtest_detail(bt_tm)
+
+# ---------- Tab 4：持股監控 ----------
+with tab_hold:
+    try:
+        repo_name = st.secrets.get("REPO", "20070117cheng/stock-box-system")
+    except Exception:
+        repo_name = "20070117cheng/stock-box-system"
+    st.caption("記錄你實際持有的股票，每日收盤後自動用箱型規則檢查該賣、該抱還是該加碼。")
+    st.markdown(
+        f"編輯持股：到 [GitHub 上的 holdings.csv]"
+        f"(https://github.com/{repo_name}/edit/main/holdings.csv) 直接改，"
+        "欄位＝代號,買進日,每股成本,股數（例：2330,2026-07-01,1080,4），"
+        "隔次排程生效。")
+    rep_path = os.path.join(OUTPUTS_DIR, "holdings_report.parquet")
+    if not os.path.exists(rep_path):
+        st.info("尚無持股報告。在 holdings.csv 填入持股後，等每日排程跑完就會出現。")
+    else:
+        rep = pd.read_parquet(rep_path)
+        if rep.empty:
+            st.info("holdings.csv 目前是空的。")
+        else:
+            n_sell = int((rep["警示"] == "賣出").sum())
+            n_watch = int((rep["警示"] == "注意").sum())
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("持股檔數", f"{len(rep)}")
+            c2.metric("賣出警示", f"{n_sell}", delta=None)
+            c3.metric("注意（轉弱）", f"{n_watch}")
+            c4.metric("未實現損益合計", f"{rep['未實現損益'].sum():,.0f} 元")
+            if n_sell:
+                st.error("有 " + str(n_sell) + " 檔觸發賣出警示，明細見下表「警示」欄。")
+            st.dataframe(rep, use_container_width=True, hide_index=True)
+
+# ---------- Tab 5：虛擬操盤 ----------
+with tab_paper:
+    paper_dir = os.path.join(OUTPUTS_DIR, "paper")
+    eq_path = os.path.join(paper_dir, "equity.csv")
+    st.caption("系統用虛擬 5 萬元照訊號自動操作零股（單檔上限 10%、每日最多新買 2 檔、"
+               "收盤價成交無滑價）——不花錢看系統實際跑起來的樣子。")
+    if not os.path.exists(eq_path):
+        st.info("虛擬操盤尚未開始，等每日排程首跑完成。")
+    else:
+        eq = pd.read_csv(eq_path, encoding="utf-8-sig")
+        state_path = os.path.join(paper_dir, "state.json")
+        state = json.load(open(state_path, encoding="utf-8")) \
+            if os.path.exists(state_path) else {"cash": 0, "holdings": {}}
+        last = eq.iloc[-1]
+        start_cap = float(cfg_saved["total_capital"])
+        ret_pct = (float(last["總值"]) / start_cap - 1) * 100
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("目前總值", f"{last['總值']:,.0f} 元",
+                  f"{ret_pct:+.2f}%")
+        c2.metric("現金", f"{last['現金']:,.0f} 元")
+        c3.metric("持股檔數", f"{int(last['持股檔數'])}")
+        c4.metric("模擬起始資金", f"{start_cap:,.0f} 元")
+
+        fig_eq = go.Figure(go.Scatter(x=pd.to_datetime(eq["日期"]),
+                                      y=eq["總值"], mode="lines",
+                                      line=dict(color="#2563eb", width=2)))
+        fig_eq.add_hline(y=start_cap, line=dict(color="#9ca3af", dash="dot"))
+        fig_eq.update_layout(height=280, margin=dict(l=10, r=10, t=20, b=10),
+                             yaxis_title="總值（元）")
+        st.plotly_chart(fig_eq, use_container_width=True)
+
+        if state["holdings"]:
+            st.subheader("目前虛擬持股")
+            hold_rows = [{"代號": sid, "股名": h.get("name", ""),
+                          "股數": h["shares"], "成本": h["cost"],
+                          "進場日": h["entry_date"]}
+                         for sid, h in state["holdings"].items()]
+            st.dataframe(pd.DataFrame(hold_rows),
+                         use_container_width=True, hide_index=True)
+
+        tr_path = os.path.join(paper_dir, "trades.csv")
+        if os.path.exists(tr_path):
+            st.subheader("交易紀錄")
+            tr = pd.read_csv(tr_path, encoding="utf-8-sig",
+                             dtype={"代號": str})
+            st.dataframe(tr.iloc[::-1], use_container_width=True,
+                         hide_index=True)

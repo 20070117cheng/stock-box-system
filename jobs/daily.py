@@ -39,7 +39,15 @@ def run(db_path: str, output_dir: str, date: str | None = None,
     result = {"date": date, "scanned": 0, "backtested": 0, "errors": []}
     try:
         if not skip_update:
-            stats = update_prices(conn, get_companies(conn), today=date)
+            from core.data import dates_needing_update, update_prices_official
+            comps = get_companies(conn)
+            # 主要來源：證交所/櫃買官方 API（yfinance 在 Actions 機房 IP 被擋）
+            need = dates_needing_update(conn, date)
+            if need:
+                official = update_prices_official(conn, comps, need)
+                result["update_official"] = official
+            # 備援：yfinance 增量（官方已補齊時會全數 skip，成本近零）
+            stats = update_prices(conn, comps, today=date)
             logger.info("股價更新：%s", stats)
             result["update"] = stats
 

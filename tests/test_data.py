@@ -2,8 +2,40 @@
 import numpy as np
 import pandas as pd
 
-from core.data import (get_companies, get_stock_name, load_prices,
-                       update_prices, yf_ticker)
+from core.data import (dates_needing_update, get_companies, get_stock_name,
+                       load_prices, update_prices, update_prices_official,
+                       yf_ticker)
+
+
+def test_update_prices_official_inserts_only_known_stocks(db):
+    fake = {"2330": (100.0, 101.0, 99.0, 100.5, 12345),
+            "6488": (50.0, 51.0, 49.0, 50.5, 678),
+            "1101": (30.0, 30.5, 29.5, 30.2, 999)}  # 不在 company_master → 略過
+    stats = update_prices_official(
+        db, get_companies(db), ["2026-07-10"], fetcher=lambda d: fake)
+    assert stats["dates_ok"] == ["2026-07-10"]
+    assert stats["inserted_rows"] == 2
+    row = db.execute("SELECT close, volume FROM stock_price_daily "
+                     "WHERE stock_id='2330' AND date='2026-07-10'").fetchone()
+    assert row == (100.5, 12345)
+
+
+def test_update_prices_official_records_empty_as_error(db):
+    stats = update_prices_official(
+        db, get_companies(db), ["2026-07-11"], fetcher=lambda d: {})
+    assert stats["dates_ok"] == []
+    assert "2026-07-11" in stats["errors"][0]
+
+
+def test_dates_needing_update_flags_missing_and_partial(db):
+    # conftest 只塞 2026-06 的 2330（每天 1 筆 < min_rows=2）
+    need = dates_needing_update(db, "2026-06-10", lookback_days=4, min_rows=2)
+    assert need == ["2026-06-08", "2026-06-09", "2026-06-10"]
+    db.executemany("INSERT INTO stock_price_daily VALUES (?,?,?,?,?,?,?)",
+                   [("6488", "2026-06-09", 1, 1, 1, 1, 1),
+                    ("2317", "2026-06-09", 1, 1, 1, 1, 1)])
+    need2 = dates_needing_update(db, "2026-06-10", lookback_days=4, min_rows=2)
+    assert "2026-06-09" not in need2
 
 
 def test_get_companies_filters(db):

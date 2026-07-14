@@ -113,6 +113,131 @@ def _extract_rows(df_download, ticker, sid, is_multi) -> list[tuple]:
     return rows
 
 
+_OFFICIAL_HEADERS = {"User-Agent": "Mozilla/5.0"}
+
+
+def _pf(s) -> float | None:
+    """官方 API 數字欄位 → float；'--' 或空值回 None。"""
+    s = str(s).replace(",", "").strip()
+    if s in ("", "--", "---", "None"):
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _official_quotes(date: str) -> dict[str, tuple]:
+    """抓證交所＋櫃買中心指定日全市場行情 → {代號: (o,h,l,c,v)}。
+
+    yfinance 在 GitHub Actions 的機房 IP 常被 Yahoo 擋（2026-07-10 起
+    整批回空），改用官方來源。收盤價為原始市價（非還原權值）。
+    """
+    import requests
+
+    quotes: dict[str, tuple] = {}
+
+    # 上市（TWSE）
+    r = requests.get("https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX",
+                     params={"date": date.replace("-", ""),
+                             "type": "ALLBUT0999", "response": "json"},
+                     headers=_OFFICIAL_HEADERS, timeout=60)
+    d = r.json()
+    if d.get("stat") == "OK":
+        for t in d.get("tables", []):
+            f = t.get("fields", [])
+            if "證券代號" in f and "收盤價" in f:
+                idx = [f.index(k) for k in
+                       ("證券代號", "開盤價", "最高價", "最低價", "收盤價", "成交股數")]
+                for row in t["data"]:
+                    o, h, l, c = (_pf(row[idx[1]]), _pf(row[idx[2]]),
+                                  _pf(row[idx[3]]), _pf(row[idx[4]]))
+                    v = _pf(row[idx[5]])
+                    if c is None or v is None or v <= 0:
+                        continue
+                    quotes[str(row[idx[0]]).strip()] = (o or c, h or c,
+                                                        l or c, c, int(v))
+                break
+
+    # 上櫃（TPEx）；其憑證在部分環境驗證失敗，退一步跳過驗證
+    url = "https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes"
+    params = {"date": date.replace("-", "/"), "response": "json"}
+    try:
+        r2 = requests.get(url, params=params, headers=_OFFICIAL_HEADERS,
+                          timeout=60)
+    except requests.exceptions.SSLError:
+        import urllib3
+        urllib3.disable_warnings()
+        r2 = requests.get(url, params=params, headers=_OFFICIAL_HEADERS,
+                          timeout=60, verify=False)
+    d2 = r2.json()
+    for t in d2.get("tables", []):
+        f = t.get("fields", [])
+        if f and "代號" in f and "收盤" in f:
+            idx = [f.index(k) for k in
+                   ("代號", "開盤", "最高", "最低", "收盤", "成交股數")]
+            for row in t.get("data", []):
+                o, h, l, c = (_pf(row[idx[1]]), _pf(row[idx[2]]),
+                              _pf(row[idx[3]]), _pf(row[idx[4]]))
+                v = _pf(row[idx[5]])
+                if c is None or v is None or v <= 0:
+                    continue
+                quotes.setdefault(str(row[idx[0]]).strip(),
+                                  (o or c, h or c, l or c, c, int(v)))
+            break
+    return quotes
+
+
+def update_prices_official(conn, companies: pd.DataFrame, dates: list[str],
+                           fetcher=None) -> dict:
+    """用官方來源補指定日期的全市場行情。fetcher 可注入（測試用）。"""
+    fetcher = fetcher or _official_quotes
+    stats = {"dates_ok": [], "inserted_rows": 0, "errors": []}
+    valid = set(companies["stock_id"])
+    for date in dates:
+        try:
+            quotes = fetcher(date)
+        except Exception as e:
+            stats["errors"].append(f"{date}: {e}")
+            continue
+        rows = [(sid, date, o, h, l, c, v)
+                for sid, (o, h, l, c, v) in quotes.items() if sid in valid]
+        if not rows:
+            stats["errors"].append(f"{date}: 官方來源無資料（可能為休市日）")
+            continue
+        conn.executemany(
+            "INSERT OR IGNORE INTO stock_price_daily "
+            "(stock_id, date, open, high, low, close, volume) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
+        conn.commit()
+        stats["dates_ok"].append(date)
+        stats["inserted_rows"] += len(rows)
+    logger.info("官方來源更新：%s", stats)
+    return stats
+
+
+def dates_needing_update(conn, today: str, lookback_days: int = 10,
+                         min_rows: int = 500) -> list[str]:
+    """近 lookback_days 天內，資料筆數不足 min_rows 的平日清單。
+
+    覆蓋兩種情況：整天缺資料、以及部分更新（如 yfinance 只塞進幾檔）。
+    休市日官方來源會回無資料，補抓一次後仍為空屬正常。
+    """
+    end = datetime.datetime.strptime(today, "%Y-%m-%d")
+    out = []
+    for i in range(lookback_days, -1, -1):
+        d = end - datetime.timedelta(days=i)
+        if d.weekday() >= 5:
+            continue
+        ds = d.strftime("%Y-%m-%d")
+        n = conn.execute(
+            "SELECT COUNT(*) FROM stock_price_daily WHERE date = ?",
+            (ds,)).fetchone()[0]
+        if n < min_rows:
+            out.append(ds)
+    return out
+
+
 def update_prices(conn, companies: pd.DataFrame, downloader=None,
                   today: str | None = None) -> dict:
     """增量更新股價。回傳統計 dict。

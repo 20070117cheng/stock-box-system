@@ -6,7 +6,11 @@ on:
     # 每日流程冪等，重複執行只會覆蓋相同結果
     - cron: "30 7 * * 1-5"    # 台北時間 15:30（UTC+8）
     - cron: "30 10 * * 1-5"   # 台北時間 18:30 備援
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      extra_args:
+        description: "額外參數（如 --date 2026-07-13 --skip-update）"
+        default: ""
 
 permissions:
   contents: write
@@ -32,7 +36,7 @@ jobs:
       - name: 更新股價 + 掃描 + 回測
         env:
           PYTHONIOENCODING: utf-8
-        run: python -m jobs.daily --db tw_stock_v2.db --output-dir outputs
+        run: python -m jobs.daily --db tw_stock_v2.db --output-dir outputs ${{ inputs.extra_args || '' }}
 
       - name: 資料庫存回 Release
         env:

@@ -205,8 +205,9 @@ def update_prices_official(conn, companies: pd.DataFrame, dates: list[str],
         if not rows:
             stats["errors"].append(f"{date}: 官方來源無資料（可能為休市日）")
             continue
+        # REPLACE：官方收盤數字是權威版本，覆蓋備援可能寫入的盤中價
         conn.executemany(
-            "INSERT OR IGNORE INTO stock_price_daily "
+            "INSERT OR REPLACE INTO stock_price_daily "
             "(stock_id, date, open, high, low, close, volume) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
         conn.commit()
@@ -230,6 +231,9 @@ def dates_needing_update(conn, today: str, lookback_days: int = 10,
         if d.weekday() >= 5:
             continue
         ds = d.strftime("%Y-%m-%d")
+        if ds == today:
+            out.append(ds)  # 當天永遠重抓：覆蓋備援可能寫入的盤中價
+            continue
         n = conn.execute(
             "SELECT COUNT(*) FROM stock_price_daily WHERE date = ?",
             (ds,)).fetchone()[0]

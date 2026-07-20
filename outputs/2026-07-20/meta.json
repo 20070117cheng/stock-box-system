@@ -1,0 +1,35 @@
+{
+  "date": "2026-07-20",
+  "backtest_start": "2026-01-20",
+  "config": {
+    "stop_profit_pct": 10.0,
+    "fixed_loss_pct": 3.0,
+    "high_threshold_pct": 95.0,
+    "add_position_size": 1.0,
+    "initial_size": 1.0,
+    "default_lookback_months": 6,
+    "kd_period": 9,
+    "near_cross_gap": 2.0,
+    "winrate_window_months": 3,
+    "scan_mode": "near_high",
+    "pullback_max_pct": 7.0,
+    "pullback_recency_days": 20,
+    "surge_lookback_days": 490,
+    "surge_rebound_min_pct": 60.0,
+    "scan_filters": [],
+    "volume_surge_ratio": 1.5,
+    "volume_avg_days": 20,
+    "regime_symbol": "0050",
+    "regime_ma_days": 200,
+    "rs_top_pct": 20.0,
+    "rs_lookback_days": 60,
+    "total_capital": 50000,
+    "position_pct": 10.0,
+    "paper_max_new_per_day": 2
+  },
+  "tomorrow_desc": {
+    "2801": "【目前空頭維持中】 進場提示：明日收盤需高於 23.93 元方能轉為黃金交叉。 | 出場提示：明日若跌破 23.93 元 (+0.32%) 則將轉為死亡交叉。",
+    "2849": "【目前空頭維持中】 進場提示：明日收盤需高於 15.22 元方能轉為黃金交叉。 | 出場提示：明日若跌破 15.22 元 (+1.82%) 則將轉為死亡交叉。",
+    "5880": "【目前空頭維持中】 進場提示：明日收盤需高於 25.55 元方能轉為黃金交叉。 | 出場提示：明日若跌破 25.55 元 (+0.19%) 則將轉為死亡交叉。"
+  }
+}

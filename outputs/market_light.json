@@ -1,7 +1,7 @@
 {
-  "light": "yellow",
-  "ratio": 1.03,
-  "pct_rank": 11.4,
-  "trend_up": true,
-  "advice": "行情普通——減量操作"
+  "light": "red",
+  "ratio": 0.93,
+  "pct_rank": 9.4,
+  "trend_up": false,
+  "advice": "創新高股稀少且走弱——建議空手等待"
 }
